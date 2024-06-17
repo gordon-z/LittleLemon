@@ -2,13 +2,14 @@ from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status
 from .models import MenuItem, Cart, Order, OrderItem
-from .serializers import MenuItemSerializer, StaffSerializer, CartSerializer
+from .serializers import MenuItemSerializer, StaffSerializer, CartSerializer, OrderSerializer, OrderItemSerializer
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from .permissions import IsDeliveryCrew, IsManager
 from django.contrib.auth.models import User, Group
 from rest_framework.mixins import CreateModelMixin
 from rest_framework.response import Response
+from datetime import date
 
 
 class MenuItemsView(generics.ListCreateAPIView):
@@ -166,3 +167,73 @@ class CartView(generics.ListCreateAPIView, generics.DestroyAPIView):
         except:
             return Response({'message': 'Unable to delete cart'}, status.HTTP_400_BAD_REQUEST)
         
+class OrderView(generics.ListCreateAPIView):
+    serializer_class = OrderSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if self.request.user.groups.filter(name="Manager").exists():
+            return Order.objects.all()
+        elif self.request.user.groups.filter(name="Delivery Crew").exists():
+            return Order.objects.filter(delivery_crew = self.request.user)
+        else:
+            return Order.objects.filter(user = self.request.user)
+        
+    def create(self, request, *args, **kwargs):
+        cart = Cart.objects.filter(user = request.user)
+        cart_items = cart.values()
+
+        if not cart_items:
+            return Response({'message': 'Cart is empty'}, status.HTTP_400_BAD_REQUEST)
+        
+        order = Order.objects.create(user = request.user, status = False, total = sum(cart_item['price'] for cart_item in cart_items), date = str(date.today()))
+
+        for item in cart_items:
+            order_item = OrderItem.objects.create(order = order, menuitem = get_object_or_404(MenuItem, id=item['menuitem_id']), quantity = item.get('quantity'), unit_price = item.get('unit_price'), price = item.get('price'))
+            order_item.save()
+
+        cart.delete()
+        return Response({'message': 'Successfully placed order'}, status.HTTP_201_CREATED)
+
+class OrderItemView(generics.ListAPIView, generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = OrderItemSerializer
+
+    def get_permissions(self):
+        order = Order.objects.get(pk=self.kwargs['pk'])
+        if self.request.user == order.user and self.request.method == 'GET':
+            permission_classes = [IsAuthenticated]
+        elif self.request.method == 'PUT' or self.request.method == 'DELETE':
+            permission_classes = [IsAuthenticated, IsManager | IsAdminUser]
+        elif self.request.method == 'PATCH':
+            permission_classes = [IsAuthenticated, IsManager | IsDeliveryCrew]
+        else:
+            permission_classes = [IsAuthenticated, IsManager | IsAdminUser]
+        return[permission() for permission in permission_classes] 
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.groups.filter(name='Manager').exists():
+            return OrderItem.objects.all()
+        selected_order = Order.objects.get(id=self.kwargs.get('pk'))
+        return OrderItem.objects.filter(order=selected_order)
+    
+    def patch(self, request, *args, **kwargs):
+        order = Order.objects.get(pk=self.kwargs['pk'])
+        order.status = not order.status
+        order.save()
+        return Response({'message':'Status of order #'+ str(order.id)+' changed to '+str(order.status)}, status.HTTP_200_OK)
+    
+    def put(self, request, *args, **kwargs):
+        order = get_object_or_404(Order, pk=self.kwargs['pk'])
+        OrderItemSerializer(data=request.data).is_valid()
+        new_crew_id = request.data['delivery_crew']
+        new_crew = get_object_or_404(User, pk=new_crew_id)
+        order.delivery_crew = new_crew
+        order.save()
+        return Response({'message': 'Updated Delivery Crew to ' + str(new_crew) + ' for order ' + str(order.id)})
+    
+    def destroy(self, request, *args, **kwargs):
+        order = get_object_or_404(Order, pk=self.kwargs.get('pk'))
+        order_id = order.id
+        order.delete()
+        return Response({'message': "Deleted order " + str(order_id)})
