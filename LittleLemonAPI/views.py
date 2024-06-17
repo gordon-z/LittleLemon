@@ -10,9 +10,11 @@ from django.contrib.auth.models import User, Group
 from rest_framework.mixins import CreateModelMixin
 from rest_framework.response import Response
 from datetime import date
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle
 
 
 class MenuItemsView(generics.ListCreateAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     queryset = MenuItem.objects.all()
     serializer_class = MenuItemSerializer
 
@@ -27,6 +29,7 @@ class MenuItemsView(generics.ListCreateAPIView):
         return [permission() for permission in permission_classes]
 
 class SingleMenuItemView(generics.RetrieveUpdateDestroyAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     queryset = MenuItem.objects.all()
     serializer_class = MenuItemSerializer
 
@@ -41,6 +44,7 @@ class SingleMenuItemView(generics.RetrieveUpdateDestroyAPIView):
         return [permission() for permission in permission_classes]
     
 class ManagersView(generics.ListAPIView, generics.CreateAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     group = Group.objects.get(name='Manager')
     queryset = User.objects.filter(groups=group)
     serializer_class = StaffSerializer
@@ -70,6 +74,7 @@ class ManagersView(generics.ListAPIView, generics.CreateAPIView):
             return Response({'message':'Successfully added user to Manager group'}, status.HTTP_201_CREATED)
     
 class DeliveryCrewView(generics.ListCreateAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     group = Group.objects.get(name='Delivery Crew')
     queryset = User.objects.filter(groups=group)
     serializer_class = StaffSerializer
@@ -99,6 +104,7 @@ class DeliveryCrewView(generics.ListCreateAPIView):
             return Response({'message':'Successfully added user to Delivery Crew group'}, status.HTTP_201_CREATED)
 
 class SingleManagerView(generics.DestroyAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     group = Group.objects.get(name='Manager')
     queryset = User.objects.filter(groups=group)
     serializer_class = StaffSerializer
@@ -116,6 +122,7 @@ class SingleManagerView(generics.DestroyAPIView):
         return Response({'message':'Successfully deleted specified Manager'}, status.HTTP_200_OK)
     
 class SingleDeliveryCrewMemberView(generics.DestroyAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     group = Group.objects.get(name='Delivery Crew')
     queryset = User.objects.filter(groups=group)
     serializer_class = StaffSerializer
@@ -133,6 +140,7 @@ class SingleDeliveryCrewMemberView(generics.DestroyAPIView):
         return Response({'message':'Successfully deleted specified Delivery Crew member'}, status.HTTP_200_OK)
     
 class CartView(generics.ListCreateAPIView, generics.DestroyAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     serializer_class = CartSerializer
     permission_classes = [IsAuthenticated]
     
@@ -168,6 +176,7 @@ class CartView(generics.ListCreateAPIView, generics.DestroyAPIView):
             return Response({'message': 'Unable to delete cart'}, status.HTTP_400_BAD_REQUEST)
         
 class OrderView(generics.ListCreateAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     serializer_class = OrderSerializer
     permission_classes = [IsAuthenticated]
 
@@ -180,6 +189,7 @@ class OrderView(generics.ListCreateAPIView):
             return Order.objects.filter(user = self.request.user)
         
     def create(self, request, *args, **kwargs):
+        throttle_classes = [AnonRateThrottle, UserRateThrottle]
         cart = Cart.objects.filter(user = request.user)
         cart_items = cart.values()
 
@@ -196,6 +206,7 @@ class OrderView(generics.ListCreateAPIView):
         return Response({'message': 'Successfully placed order'}, status.HTTP_201_CREATED)
 
 class OrderItemView(generics.ListAPIView, generics.RetrieveUpdateDestroyAPIView):
+    throttle_classes = [AnonRateThrottle, UserRateThrottle]
     serializer_class = OrderItemSerializer
 
     def get_permissions(self):
